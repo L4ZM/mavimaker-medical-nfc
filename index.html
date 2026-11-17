@@ -5,21 +5,27 @@ people.forEach((p,i)=>{const o=document.createElement('option');o.value='demo-'+
 const id=new URLSearchParams(location.search).get('id');const direct=[...select.options].some(o=>o.value===id);if(direct){select.value=id;select.closest('.card').hidden=true;}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(){const p=people[select.selectedIndex],phone=p[5];out.innerHTML='<div class="card"><div class="top"><div><span class="muted">FICHA MÉDICA · DEMOSTRACIÓN</span><h1>'+esc(p[0])+'</h1></div><div class="blood">'+esc(p[1])+'</div></div><p class="warning"><strong>DATOS FICTICIOS.</strong> No usar para atención médica.</p></div><div class="card"><h2>⚠️ Alergias</h2><p>'+esc(p[2])+'</p></div><div class="card"><h2>Diagnósticos</h2><p>'+esc(p[3])+'</p></div><div class="card"><h2>Medicamentos</h2><p>'+esc(p[4])+'</p></div><div class="card"><h2>Contacto de emergencia (ficticio)</h2><p>'+esc(phone)+'</p><a class="btn call" href="tel:+'+phone+'">Llamar</a><a class="btn" href="https://wa.me/52'+phone+'" target="_blank" rel="noopener">WhatsApp</a></div>';history.replaceState(null,'','?id='+select.value)}
-async function renderConnectedDemo(){
-  document.getElementById('api-demo')?.remove();
-  if(!['demo-01','demo-02'].includes(select.value))return;
-  const card=document.createElement('div');card.className='card';card.id='api-demo';
-  card.innerHTML='<h2>Conexión con Supabase · Datos ficticios</h2><p>Consultando función medical-profile…</p>';
-  out.append(card);
-  const current=select.value;
+// Modo NFC: el token se guarda en el fragmento (#token=...), no en GitHub.
+const token=new URLSearchParams(location.hash.slice(1)).get('token');
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function field(label,value){return '<div class="card"><h2>'+esc(label)+'</h2><p>'+esc(value||'No registrado')+'</p></div>'}
+async function loadNfcProfile(){
+  select.closest('.card').hidden=true;
+  if(!token||!uuid.test(token)){out.innerHTML='<div class="card"><h1>Enlace inválido</h1><p>No se encontró un identificador válido.</p></div>';return}
+  out.innerHTML='<div class="card"><h2>Consultando ficha médica…</h2></div>';
   try{
-    const response=await fetch('https://tcdaiaaxajppbcpynivw.supabase.co/functions/v1/medical-profile?id='+encodeURIComponent(current),{cache:'no-store'});
-    if(!response.ok)throw new Error('HTTP '+response.status);
-    const data=await response.json();
-    if(select.value!==current)return;
-    if(data.demo!==true||!data.profile)throw new Error('Respuesta de prueba inesperada');
-    card.innerHTML='<h2>Conexión con Supabase · Datos ficticios</h2><p><strong>'+esc(data.profile.name||'Sin nombre')+'</strong></p><p>Tipo sanguíneo: '+esc(data.profile.blood_type||'No registrado')+'</p><p>Alergias: '+esc(data.profile.allergies||'No registradas')+'</p><p class="muted">Información recibida en vivo desde la función medical-profile.</p>';
-  }catch(error){if(select.value===current)card.innerHTML='<h2>Conexión con Supabase</h2><p>No se pudo consultar la función de demostración. '+esc(error.message)+'</p>';}
+    const endpoint='https://tcdaiaaxajppbcpynivw.supabase.co/functions/v1/medical-profile?token='+encodeURIComponent(token);
+    const response=await fetch(endpoint,{cache:'no-store',referrerPolicy:'no-referrer'});
+    const body=await response.json();
+    if(!response.ok||body.success!==true||!body.profile)throw Error('No fue posible consultar esta ficha');
+    const p=body.profile;
+    const phone=String(p.emergency_contact_phone||'').replace(/[^0-9]/g,'');
+    const validPhone=phone.length>=10&&phone.length<=15&&!/^0+$/.test(phone);
+    const buttons=validPhone?'<a class="btn call" href="tel:'+phone+'">Llamar</a><a class="btn" href="https://wa.me/'+(phone.length===10?'52':'')+phone+'" target="_blank" rel="noopener noreferrer">WhatsApp</a>':'';
+    out.innerHTML='<div class="card"><div class="top"><div><span class="muted">FICHA DE EMERGENCIA</span><h1>'+esc(p.full_name||'Sin nombre')+'</h1></div><div class="blood">'+esc(p.blood_type||'—')+'</div></div><p class="warning">Información proporcionada por el titular. Verificar con personal médico.</p></div>'
+      +field('Fecha de nacimiento',p.date_of_birth)+field('⚠️ Alergias',p.allergies)+field('Condiciones médicas',p.medical_conditions)+field('Medicamentos',p.medications)+field('IMSS',p.imss_number)
+      +'<div class="card"><h2>Contacto de emergencia</h2><p>'+esc(p.emergency_contact_name||'No registrado')+'</p><p>'+esc(p.emergency_contact_phone||'No registrado')+'</p>'+buttons+'</div>';
+  }catch(e){out.innerHTML='<div class="card"><h1>No se pudo abrir la ficha</h1><p>Comprueba tu conexión o solicita al propietario un enlace actualizado.</p></div>'}
 }
-select.addEventListener('change',()=>{render();renderConnectedDemo()});render();renderConnectedDemo();
+if(token!==null){loadNfcProfile()}else{select.addEventListener('change',render);render()}
 </script></body></html>
